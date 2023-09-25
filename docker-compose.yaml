@@ -1,0 +1,14 @@
+version: '3'
+services:
+  midas-silenus:
+    container_name: midas-silenus
+    image: midas/silenus:0.1.0
+    build: .
+    ports:
+      - "8080:8080"
+    networks:
+      - midas
+
+networks:
+  midas:
+    name: midas
