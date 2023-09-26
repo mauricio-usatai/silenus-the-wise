@@ -41,35 +41,48 @@ class PolynomialRegressionService:
         Returns:
             dict: Predictions
         """
+        model_loader = ModelLoader.get_instance()
+        model_descriptor = PolynomialRegressionDataModel(
+            **model_loader.load_model(f"polynomial_regression_{symbol.lower()}")
+        )
+
         try:
             from_date = datetime.datetime.strptime(from_date, "%y-%m-%d")
             to_date = datetime.datetime.strptime(
                 f"{to_date} 23:59:59", "%y-%m-%d %H:%M:%S"
             )
-            if (
-                from_date.date() < datetime.date.today()
-                or to_date.date() < datetime.date.today()
-            ):
+            if from_date.date() > to_date.date():
                 raise InvalidDateRange
         except ValueError as err:
             raise InvalidDate from err
 
-        prediction_hours = self.generate_working_hours(
+        pred_start_index = model_descriptor.pred_start_index
+        pred_start_date = model_descriptor.pred_start_date
+        pred_start_date = datetime.datetime.strptime(
+            pred_start_date, "%y-%m-%d %H:%M:%S"
+        )
+
+        prediction_hours = self.get_working_hours_between(
             from_date=from_date,
             to_date=to_date,
         )
 
-        model_loader = ModelLoader.get_instance()
-        model_descriptor = PolynomialRegressionDataModel(
-            **model_loader.load_model(f"polynomial_regression_{symbol}")
+        adjusted_pred_start_index = self.adjust_pred_start_index(
+            from_date=from_date,
+            pred_start_date=pred_start_date,
+            pred_start_index=pred_start_index,
         )
 
         model = model_descriptor.artifact
-        pred_start_index = model_descriptor.pred_start_index
 
         predictions = model.predict(
             np.array(
-                list(range(pred_start_index, pred_start_index + len(prediction_hours)))
+                list(
+                    range(
+                        adjusted_pred_start_index,
+                        adjusted_pred_start_index + len(prediction_hours),
+                    )
+                )
             ).reshape(-1, 1)
         )
 
@@ -77,9 +90,9 @@ class PolynomialRegressionService:
             hour: f"{prediction:.3f}"
             for hour, prediction in zip(prediction_hours, predictions.flatten())
         }
-        return predictions
+        return predictions, adjusted_pred_start_index
 
-    def generate_working_hours(self, from_date: str, to_date: str) -> List[str]:
+    def get_working_hours_between(self, from_date: str, to_date: str) -> List[str]:
         """
         Generate a list of working hours for a date range
 
@@ -109,3 +122,33 @@ class PolynomialRegressionService:
         )
 
         return working_days
+
+    def adjust_pred_start_index(
+        self,
+        from_date: datetime.datetime,
+        pred_start_date: datetime.datetime,
+        pred_start_index: int,
+    ) -> int:
+        """
+        The polynomial regression model is a function of time so the prediciton
+        index is just a numeric representation of that time in the function itself
+        This helper function adjusts that index in order to generate correct predictions
+        for a given time period
+
+        Args:
+            from_date (datetime.datetime): Inital date
+            pred_start_date (datetime.datetime): The model's reference date
+            pred_start_index (int): Index representing pred_start_date on the model
+
+        Returns:
+            int: Adjusted index
+        """
+        cal = Brazil()
+
+        working_days = cal.get_working_days_delta(from_date, pred_start_date)
+        working_days_diff = (
+            working_days if from_date >= pred_start_date else -working_days
+        )
+        adjusted_index = pred_start_index + working_days_diff * 7
+
+        return adjusted_index

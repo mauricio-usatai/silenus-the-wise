@@ -36,7 +36,7 @@ async def preg_predict(symbol: str, from_date: str, to_date: str) -> JSONRespons
     """
     preg = PolynomialRegressionService()
     try:
-        prediction = await preg.predict(
+        prediction, adjusted_index = await preg.predict(
             symbol=symbol,
             from_date=from_date,
             to_date=to_date,
@@ -51,4 +51,7 @@ async def preg_predict(symbol: str, from_date: str, to_date: str) -> JSONRespons
         logger.error("%s\n%s", err, traceback.format_exc())
         return JSONResponse(status_code=500, content={"error": "unknown server error"})
 
-    return JSONResponse(status_code=200, content={"prediction": prediction})
+    return JSONResponse(
+        status_code=200,
+        content={"prediction": prediction, "adjusted_index": adjusted_index},
+    )
